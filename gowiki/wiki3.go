@@ -58,11 +58,7 @@ func getTitle(w http.ResponseWriter, r *http.Request) (string, error) {
 	return m[2], nil // The title is the second subexpression.
 }
 
-func viewHandler(w http.ResponseWriter, r *http.Request) {
-	title, err := getTitle(w, r)
-	if err != nil {
-		return
-	}
+func viewHandler(w http.ResponseWriter, r *http.Request, title string) {
 	p, err := loadPage(title)
 	if err != nil {
 		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
@@ -73,11 +69,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "view", p)
 }
 
-func editHandler(w http.ResponseWriter, r *http.Request) {
-	title, err := getTitle(w, r)
-	if err != nil {
-		return
-	}
+func editHandler(w http.ResponseWriter, r *http.Request, title string) {
 	p, err := loadPage(title)
 	if err != nil {
 		p = &Page{Title: title}
@@ -93,25 +85,44 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 	// does not corrupt the form HTML.
 }
 
-func saveHandler(w http.ResponseWriter, r *http.Request) {
-	// The page title (provided in the URL) and the form's only field,
-	// Body, are stored in a new Page. The save() method is then called
-	// to write the data to a file, and the client is redirected to the /view/ page.
-	title, err := getTitle(w, r)
-	if err != nil {
-		return
-	}
+func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
 	body := r.FormValue("body")
 	p := &Page{Title: title, Body: []byte(body)}
 	// The value returned by FormValue is of type string. We must convert that value
 	// to []byte before it will fit into the Page struct. We use []byte(body) to
 	// perform the conversion.
-	err = p.save()
+	err := p.save()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
+}
+
+/**
+Now let's define a wrapper function that takes a function of the above type, and returns
+a function of type http.HandlerFunc (suitable to be passed to the function http.HandleFunc):
+**/
+func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
+	/**
+	The closure returned by makeHandler is a function that takes an http.ResponseWriter
+	and http.Request (in other words, an http.HandlerFunc). The closure extracts the
+	title from the request path, and validates it with the TitleValidator regexp.
+	If the title is invalid, an error will be written to the ResponseWriter using
+	the http.NotFound function.
+	If the title is valid, the enclosed handler function fn will be called with the
+	ResponseWriter, Request, and title as arguments.
+	**/
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Here we will extract the page title from the Request,
+		// and call the provided handler 'fn'
+		m := validPath.FindStringSubmatch(r.URL.Path)
+		if m == nil {
+			http.NotFound(w, r)
+			return
+		}
+		fn(w, r, m[2])
+	}
 }
 
 var templates = template.Must(template.ParseFiles("edit.html", "view.html"))
@@ -133,8 +144,11 @@ var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
 // second parameter.
 
 func main() {
-	http.HandleFunc("/view/", viewHandler)
-	http.HandleFunc("/edit/", editHandler)
-	http.HandleFunc("/save/", saveHandler)
+	//http.HandleFunc("/view/", viewHandler)
+	//http.HandleFunc("/edit/", editHandler)
+	//http.HandleFunc("/save/", saveHandler)
+	http.HandleFunc("/view/", makeHandler(viewHandler))
+	http.HandleFunc("/edit/", makeHandler(editHandler))
+	http.HandleFunc("/save/", makeHandler(saveHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
