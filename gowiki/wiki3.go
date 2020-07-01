@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 )
 
 // Data Structure
@@ -35,12 +37,32 @@ func loadPage(title string) (*Page, error) {
 }
 
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
-	t, _ := template.ParseFiles(tmpl + ".html")
-	t.Execute(w, p)
+	err := templates.ExecuteTemplate(w, tmpl+".html", p)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+/**
+If the title is valid, it will be returned along with a nil error value.
+If the title is invalid, the function will write a "404 Not Found" error to
+the HTTP connection, and return an error to the handler. To create a new error,
+we have to import the errors package.
+**/
+func getTitle(w http.ResponseWriter, r *http.Request) (string, error) {
+	m := validPath.FindStringSubmatch(r.URL.Path)
+	if m == nil {
+		http.NotFound(w, r)
+		return "", errors.New("invalid Page Title")
+	}
+	return m[2], nil // The title is the second subexpression.
 }
 
 func viewHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/view/"):] // ie index from the path ->
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
 	p, err := loadPage(title)
 	if err != nil {
 		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
@@ -52,7 +74,10 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func editHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/edit/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
 	p, err := loadPage(title)
 	if err != nil {
 		p = &Page{Title: title}
@@ -72,15 +97,40 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 	// The page title (provided in the URL) and the form's only field,
 	// Body, are stored in a new Page. The save() method is then called
 	// to write the data to a file, and the client is redirected to the /view/ page.
-	title := r.URL.Path[len("/save/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
 	body := r.FormValue("body")
 	p := &Page{Title: title, Body: []byte(body)}
 	// The value returned by FormValue is of type string. We must convert that value
 	// to []byte before it will fit into the Page struct. We use []byte(body) to
 	// perform the conversion.
-	p.save()
+	err = p.save()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
+
+var templates = template.Must(template.ParseFiles("edit.html", "view.html"))
+
+// The function template.Must is a convenience wrapper that panics when passed
+// a non-nil error value, and otherwise returns the *Template unaltered. A panic
+// is appropriate here; if the templates can't be loaded the only sensible thing
+// to do is exit the program.
+// The ParseFiles function takes any number of string arguments that identify our
+// template files, and parses those files into templates that are named after the
+// base file name. If we were to add more templates to our program, we would add their
+// names to the ParseFiles call's arguments.
+
+var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
+
+// The function regexp.MustCompile will parse and compile the regular expression,
+// and return a regexp.Regexp. MustCompile is distinct from Compile in that it will
+// panic if the expression compilation fails, while Compile returns an error as a
+// second parameter.
 
 func main() {
 	http.HandleFunc("/view/", viewHandler)
