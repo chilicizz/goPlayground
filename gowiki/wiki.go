@@ -18,7 +18,7 @@ type Page struct {
 // This is a method named save that takes as its receiver p, a pointer to Page.
 // It takes no parameters and returns a value of type error
 func (p *Page) save() error {
-	filename := p.Title + ".txt"
+	filename := "data/" + p.Title + ".txt"
 	return ioutil.WriteFile(filename, p.Body, 0600)
 }
 
@@ -28,7 +28,7 @@ func (p *Page) save() error {
 // the function ReadFile can return multiple values,
 // _ is the blank identifier which throws away the error
 func loadPage(title string) (*Page, error) {
-	filename := title + ".txt"
+	filename := "data/" + title + ".txt"
 	body, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 	}
 }
 
-var templates = template.Must(template.ParseFiles("edit.html", "view.html"))
+var templates = template.Must(template.ParseFiles("templates/edit.html", "templates/view.html"))
 
 // The function template.Must is a convenience wrapper that panics when passed
 // a non-nil error value, and otherwise returns the *Template unaltered. A panic
