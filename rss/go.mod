@@ -1,5 +1,7 @@
 module github.com/chilicizz/goPlayground/rss
 
-go 1.16
+go 1.23.0
 
-require golang.org/x/net v0.0.0-20211116231205-47ca1ff31462 // indirect
+require golang.org/x/net v0.38.0
+
+require golang.org/x/text v0.23.0 // indirect
